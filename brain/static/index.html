@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local Brain</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='12' fill='%23d9481c'/%3E%3C/svg%3E">
+<style>
+  /* Everything is local: system fonts only, no CDNs. */
+  :root {
+    --paper: #f2ede3;
+    --paper-2: #e9e2d4;
+    --card: #fbf8f2;
+    --ink: #1c1a16;
+    --ink-2: #5d574c;
+    --ink-3: #948c7d;
+    --rule: #d6cdbb;
+    --accent: #d9481c;
+    --accent-soft: #f4d9cc;
+    --ok: #3f7d4e;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "New York", Georgia, serif;
+    --sans: "Avenir Next", Avenir, "Helvetica Neue", sans-serif;
+    --mono: "SF Mono", ui-monospace, Menlo, monospace;
+    --shadow: 0 1px 0 rgba(28, 26, 22, .04), 0 10px 30px -18px rgba(28, 26, 22, .35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #16150f; --paper-2: #1e1c16; --card: #22201a;
+      --ink: #efe9dc; --ink-2: #b5ad9d; --ink-3: #7a7365; --rule: #37332a;
+      --accent: #f0643a; --accent-soft: #3b2219; --ok: #7cc08c;
+      --shadow: 0 1px 0 rgba(0,0,0,.2), 0 14px 30px -18px rgba(0,0,0,.8);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--paper);
+    background-image:
+      radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--ink) 7%, transparent) 1px, transparent 0);
+    background-size: 22px 22px;
+    color: var(--ink);
+    font: 15px/1.55 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  button, textarea, select, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+
+  /* ---------- header */
+  header {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+    padding: 22px 32px 14px; border-bottom: 1px solid var(--rule);
+  }
+  .wordmark { font: italic 400 30px/1 var(--serif); letter-spacing: -.01em; margin: 0; }
+  .wordmark b { font-style: normal; font-weight: 600; }
+  .status {
+    font: 12px/1 var(--mono); color: var(--ink-2); display: flex; gap: 14px; flex-wrap: wrap;
+    align-items: center; justify-content: flex-end;
+  }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); display: inline-block; margin-right: 6px; vertical-align: 0; }
+  .status .dot.on { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
+  .status .dot.off { background: var(--accent); }
+
+  /* ---------- layout */
+  main {
+    display: grid; grid-template-columns: minmax(320px, 400px) 1fr; gap: 0;
+    height: calc(100vh - 71px);
+  }
+  .capture { border-right: 1px solid var(--rule); padding: 28px 28px 40px; overflow-y: auto; }
+  .right { display: flex; flex-direction: column; min-height: 0; }
+
+  .eyebrow {
+    font: 600 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase;
+    color: var(--ink-3); margin: 0 0 14px; display: flex; align-items: center; gap: 10px;
+  }
+  .eyebrow::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+
+  /* ---------- record */
+  .recorder { display: grid; justify-items: center; gap: 14px; padding: 8px 0 26px; }
+  .rec-btn {
+    position: relative; width: 148px; height: 148px; border-radius: 50%; border: 0;
+    background: var(--accent); color: #fff; box-shadow: var(--shadow), inset 0 -6px 0 rgba(0,0,0,.12);
+    display: grid; place-items: center; transition: transform .15s ease, border-radius .25s ease;
+  }
+  .rec-btn:hover { transform: scale(1.03); }
+  .rec-btn:active { transform: scale(.97); }
+  .rec-btn svg { width: 46px; height: 46px; }
+  .rec-btn .stop { display: none; width: 38px; height: 38px; border-radius: 6px; background: #fff; }
+  .rec-btn.live .mic { display: none; }
+  .rec-btn.live .stop { display: block; }
+  .rec-btn.live::before, .rec-btn.live::after {
+    content: ""; position: absolute; inset: -10px; border-radius: 50%;
+    border: 2px solid var(--accent); animation: ring 1.8s ease-out infinite; pointer-events: none;
+  }
+  .rec-btn.live::after { animation-delay: .9s; }
+  @keyframes ring { from { opacity: .7; transform: scale(.92); } to { opacity: 0; transform: scale(1.25); } }
+  .rec-label { font: 400 21px/1.2 var(--serif); text-align: center; }
+  .rec-label small { display: block; font: 12px/1.4 var(--mono); color: var(--ink-3); margin-top: 4px; }
+  canvas.wave { width: 100%; height: 0; display: block; opacity: 0; transition: opacity .2s, height .2s; }
+  canvas.wave.on { opacity: 1; height: 44px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  select, .input {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 7px 10px;
+  }
+  .lang { font-size: 13px; }
+
+  /* ---------- drop zone */
+  .drop {
+    border: 1.5px dashed var(--rule); border-radius: 12px; padding: 22px 16px; text-align: center;
+    color: var(--ink-2); background: color-mix(in srgb, var(--card) 60%, transparent);
+    transition: border-color .15s, background .15s; cursor: pointer; margin-bottom: 26px;
+  }
+  .drop strong { font: 400 17px/1.3 var(--serif); color: var(--ink); display: block; margin-bottom: 4px; }
+  .drop small { font: 12px var(--mono); color: var(--ink-3); }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+
+  /* ---------- note */
+  textarea.note {
+    width: 100%; min-height: 84px; resize: vertical; background: var(--card);
+    border: 1px solid var(--rule); border-radius: 10px; padding: 12px; font: 15px/1.5 var(--serif);
+  }
+  .btn {
+    border: 1px solid var(--ink); background: var(--ink); color: var(--paper); border-radius: 999px;
+    padding: 7px 16px; font-weight: 600; font-size: 13px;
+  }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--rule); }
+  .btn:disabled { opacity: .4; cursor: default; }
+
+  /* ---------- jobs */
+  .jobs { display: grid; gap: 10px; margin-top: 26px; }
+  .job {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 11px 13px;
+    font-size: 13px; animation: rise .3s ease both;
+  }
+  .job .top { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+  .job .top span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .job .log { font: 11.5px/1.5 var(--mono); color: var(--ink-3); margin-top: 4px; }
+  .pill { font: 600 10.5px/1 var(--mono); padding: 4px 7px; border-radius: 99px; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+  .pill.running, .pill.queued { background: var(--accent-soft); color: var(--accent); }
+  .pill.running::before { content: "◌ "; display: inline-block; animation: spin 1.2s linear infinite; }
+  .pill.done { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .pill.error { background: var(--accent); color: #fff; }
+  .job a { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+
+  /* ---------- tabs */
+  .tabs { display: flex; gap: 28px; padding: 0 36px; border-bottom: 1px solid var(--rule); }
+  .tab {
+    background: none; border: 0; padding: 16px 0 13px; font: 400 19px/1 var(--serif); color: var(--ink-3);
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tab.active { color: var(--ink); border-color: var(--accent); }
+  .tab .count { font: 11px var(--mono); vertical-align: super; margin-left: 3px; }
+  .pane { display: none; flex: 1; min-height: 0; }
+  .pane.active { display: flex; flex-direction: column; }
+
+  /* ---------- chat */
+  .thread { flex: 1; overflow-y: auto; padding: 28px 36px 12px; }
+  .thread-inner { max-width: 760px; margin: 0 auto; display: grid; gap: 22px; }
+  .empty { text-align: center; color: var(--ink-3); margin-top: 12vh; }
+  .empty h2 { font: italic 400 34px/1.2 var(--serif); color: var(--ink-2); margin: 0 0 10px; }
+  .suggest { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 20px; }
+  .suggest button { background: var(--card); border: 1px solid var(--rule); border-radius: 99px; padding: 6px 14px; font-size: 13px; color: var(--ink-2); }
+  .suggest button:hover { border-color: var(--ink-2); color: var(--ink); }
+  .msg { animation: rise .25s ease both; }
+  .msg.q { justify-self: end; max-width: 80%; background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 18px 18px 4px 18px; }
+  .msg.a { font: 17px/1.6 var(--serif); }
+  .msg.a p { margin: 0 0 .6em; }
+  .msg.a ul { margin: 0 0 .6em; padding-left: 1.2em; }
+  .cite {
+    font: 600 11px/1 var(--mono); background: var(--accent-soft); color: var(--accent);
+    border: 0; padding: 3px 6px; border-radius: 5px; vertical-align: 2px;
+  }
+  .sources { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font: 12px var(--mono); color: var(--ink-3); }
+  .sources button { background: none; border: 1px solid var(--rule); border-radius: 6px; padding: 3px 8px; font: 12px var(--sans); color: var(--ink-2); }
+  .sources button:hover { border-color: var(--accent); color: var(--accent); }
+  .caret::after { content: "▍"; color: var(--accent); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .composer { padding: 14px 36px 22px; }
+  .composer-inner {
+    max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end;
+    background: var(--card); border: 1px solid var(--rule); border-radius: 16px; padding: 8px 8px 8px 16px;
+    box-shadow: var(--shadow);
+  }
+  .composer textarea { flex: 1; border: 0; background: none; resize: none; outline: none; padding: 8px 0; max-height: 160px; font-size: 15.5px; }
+  .icon-btn {
+    width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--rule); background: transparent;
+    display: grid; place-items: center; flex: none; color: var(--ink-2);
+  }
+  .icon-btn svg { width: 20px; height: 20px; }
+  .icon-btn.send { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .icon-btn.live { background: var(--accent); border-color: var(--accent); color: #fff; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 6px var(--accent-soft); } }
+  .hint { max-width: 760px; margin: 8px auto 0; font: 11.5px var(--mono); color: var(--ink-3); text-align: center; }
+
+  /* ---------- memories */
+  .memories { flex: 1; overflow-y: auto; padding: 24px 36px 40px; }
+  .mem-tools { display: flex; gap: 10px; margin-bottom: 18px; max-width: 980px; }
+  .mem-tools input { flex: 1; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; max-width: 980px; }
+  .card {
+    background: var(--card); border: 1px solid var(--rule); border-radius: 4px; padding: 16px 18px 14px;
+    text-align: left; box-shadow: var(--shadow); position: relative; transition: transform .15s ease;
+    background-image: linear-gradient(var(--accent-soft), var(--accent-soft));
+    background-size: 100% 3px; background-repeat: no-repeat;
+  }
+  .card:hover { transform: translateY(-2px) rotate(-.3deg); }
+  .card .meta { font: 11px var(--mono); color: var(--ink-3); display: flex; gap: 10px; }
+  .card h3 { font: 400 19px/1.25 var(--serif); margin: 8px 0 6px; }
+  .card p { margin: 0; color: var(--ink-2); font-size: 13.5px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* ---------- drawer */
+  .scrim { position: fixed; inset: 0; background: rgba(20, 18, 14, .35); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .scrim.open { opacity: 1; pointer-events: auto; }
+  .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(640px, 100vw); background: var(--paper);
+    border-left: 1px solid var(--rule); transform: translateX(100%); transition: transform .28s cubic-bezier(.2,.8,.2,1);
+    display: flex; flex-direction: column; box-shadow: -20px 0 40px -30px rgba(0,0,0,.5);
+  }
+  .drawer.open { transform: none; }
+  .drawer-head { padding: 22px 28px 16px; border-bottom: 1px solid var(--rule); display: flex; gap: 12px; align-items: flex-start; }
+  .drawer-head h2 { font: 400 26px/1.2 var(--serif); margin: 4px 0 0; flex: 1; }
+  .drawer-body { padding: 20px 28px 40px; overflow-y: auto; }
+  .drawer-body h4 { font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin: 22px 0 8px; }
+  .drawer-body ul { margin: 0; padding-left: 1.1em; }
+  .drawer-body li { margin-bottom: 4px; }
+  .summary { font: 17px/1.6 var(--serif); margin: 0; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tags span { font: 12px var(--mono); background: var(--paper-2); padding: 3px 8px; border-radius: 5px; }
+  pre.transcript { white-space: pre-wrap; font: 13px/1.65 var(--mono); color: var(--ink-2); background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 14px; margin: 0; }
+  .danger { color: var(--accent) !important; border-color: var(--accent) !important; }
+
+  .toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translate(-50%, 20px); opacity: 0;
+    background: var(--ink); color: var(--paper); padding: 10px 18px; border-radius: 99px; font-size: 13px;
+    transition: all .25s; pointer-events: none; z-index: 10;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; height: auto; }
+    .capture { border-right: 0; border-bottom: 1px solid var(--rule); padding: 20px 16px; }
+    header { padding: 16px; flex-direction: column; align-items: flex-start; }
+    .status { justify-content: flex-start; }
+    .tabs, .thread, .composer, .memories { padding-left: 16px; padding-right: 16px; }
+    .right { min-height: 80vh; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 class="wordmark"><b>local</b> brain</h1>
+  <div class="status" id="status"><span><i class="dot"></i>connecting…</span></div>
+</header>
+
+<main>
+  <!-- ============ CAPTURE ============ -->
+  <section class="capture">
+    <p class="eyebrow">Capture</p>
+
+    <div class="recorder">
+      <button class="rec-btn" id="recBtn" aria-label="Start recording">
+        <svg class="mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        <span class="stop"></span>
+      </button>
+      <div class="rec-label" id="recLabel">Tap to record a thought<small>meetings · voice memos · ideas</small></div>
+      <canvas class="wave" id="wave" width="600" height="88"></canvas>
+      <div class="row">
+        <select class="lang" id="lang" title="Spoken language">
+          <option value="">Language: auto-detect</option>
+          <option value="pl">Polski</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="drop" id="drop">
+      <strong>Drop audio, video or text files</strong>
+      <small>m4a · mp3 · wav · mp4 · mov · txt · md — or click to choose</small>
+      <input type="file" id="fileInput" multiple hidden
+             accept=".mp3,.wav,.m4a,.flac,.ogg,.opus,.aac,.wma,.mp4,.mov,.mkv,.webm,.avi,.txt,.md,.markdown">
+    </div>
+
+    <p class="eyebrow">Quick note</p>
+    <textarea class="note" id="note" placeholder="Write something to remember…"></textarea>
+    <div class="row" style="justify-content:flex-end;margin-top:8px">
+      <button class="btn" id="saveNote">Save note</button>
+    </div>
+
+    <div class="jobs" id="jobs"></div>
+  </section>
+
+  <!-- ============ ASK / MEMORIES ============ -->
+  <section class="right">
+    <nav class="tabs">
+      <button class="tab active" data-pane="ask">Ask</button>
+      <button class="tab" data-pane="mem">Memories<span class="count" id="memCount"></span></button>
+    </nav>
+
+    <div class="pane active" id="pane-ask">
+      <div class="thread" id="thread">
+        <div class="thread-inner" id="threadInner">
+          <div class="empty" id="empty">
+            <h2>What would you like to recall?</h2>
+            <div>Ask by typing, or press the microphone and speak.</div>
+            <div class="suggest" id="suggest">
+              <button>What are my open action items?</button>
+              <button>Summarise what I recorded this week</button>
+              <button>Jakie decyzje zapadły?</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="composer">
+        <div class="composer-inner">
+          <textarea id="question" rows="1" placeholder="Ask your brain…"></textarea>
+          <button class="icon-btn" id="askMic" title="Ask by voice">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+          </button>
+          <button class="icon-btn send" id="send" title="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+        <div class="hint">Answers come only from your own recordings and notes · nothing leaves this Mac</div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-mem">
+      <div class="memories">
+        <div class="mem-tools"><input class="input" id="filter" placeholder="Filter memories…"></div>
+        <div class="cards" id="cards"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <div class="drawer-head">
+    <div style="flex:1">
+      <div class="eyebrow" id="dMeta" style="margin:0"></div>
+      <h2 id="dTitle"></h2>
+    </div>
+    <button class="btn ghost" id="dClose">Close</button>
+  </div>
+  <div class="drawer-body" id="dBody"></div>
+</aside>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const api = async (path, opts = {}) => {
+  const r = await fetch(path, opts);
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+};
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2600);
+}
+const fmtDur = s => s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}` : "";
+
+/* ---------------- status */
+async function refreshStatus() {
+  try {
+    const s = await api("/api/status");
+    $("#status").innerHTML = `
+      <span><i class="dot on"></i>offline · 127.0.0.1</span>
+      <span><i class="dot ${s.ollama ? "on" : "off"}"></i>${s.ollama ? esc(s.llm) : "Ollama not running"}</span>
+      <span>whisper ${esc(s.whisper)}</span>
+      <span>${s.docs} memories</span>`;
+    $("#memCount").textContent = s.docs || "";
+  } catch { $("#status").innerHTML = `<span><i class="dot off"></i>server stopped</span>`; }
+}
+
+/* ---------------- recording */
+function pickMime() {
+  for (const m of ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"])
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+  return "";
+}
+async function startRecorder(onLevel) {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const mime = pickMime();
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+  const chunks = [];
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  let ctx, raf;
+  if (onLevel) {
+    ctx = new AudioContext();
+    const an = ctx.createAnalyser(); an.fftSize = 1024;
+    ctx.createMediaStreamSource(stream).connect(an);
+    const buf = new Uint8Array(an.fftSize);
+    const loop = () => { an.getByteTimeDomainData(buf); onLevel(buf); raf = requestAnimationFrame(loop); };
+    loop();
+  }
+  rec.start(250);
+  return {
+    stop: () => new Promise(res => {
+      rec.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        cancelAnimationFrame(raf); ctx && ctx.close();
+        const type = rec.mimeType || "audio/webm";
+        res({ blob: new Blob(chunks, { type }), ext: type.includes("mp4") ? "m4a" : "webm" });
+      };
+      rec.stop();
+    })
+  };
+}
+
+const wave = $("#wave"), wctx = wave.getContext("2d");
+const history = [];
+function drawWave(buf) {
+  let peak = 0; for (const v of buf) peak = Math.max(peak, Math.abs(v - 128) / 128);
+  history.push(peak); if (history.length > 90) history.shift();
+  const w = wave.width, h = wave.height, bw = w / 90;
+  wctx.clearRect(0, 0, w, h);
+  wctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--accent");
+  history.forEach((p, i) => {
+    const bh = Math.max(3, Math.min(1, p * 2.2) * h);
+    wctx.fillRect(i * bw + 1, (h - bh) / 2, bw - 3, bh);
+  });
+}
+
+let session = null, timer = null;
+$("#recBtn").onclick = async () => {
+  const btn = $("#recBtn"), label = $("#recLabel");
+  if (!session) {
+    try { session = await startRecorder(drawWave); }
+    catch (e) { toast("Microphone blocked — allow it in the browser"); return; }
+    btn.classList.add("live"); wave.classList.add("on"); history.length = 0;
+    const t0 = Date.now();
+    const tick = () => { label.innerHTML = `Recording <span style="font-family:var(--mono)">${fmtDur((Date.now() - t0) / 1000) || "0:00"}</span><small>tap to stop &amp; save</small>`; };
+    tick(); timer = setInterval(tick, 500);
+  } else {
+    clearInterval(timer);
+    const { blob, ext } = await session.stop(); session = null;
+    btn.classList.remove("live"); wave.classList.remove("on");
+    label.innerHTML = `Tap to record a thought<small>meetings · voice memos · ideas</small>`;
+    const d = new Date(), pad = n => String(n).padStart(2, "0");
+    const name = `Voice memo ${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}.${pad(d.getMinutes())}.${ext}`;
+    upload(blob, name);
+  }
+};
+
+/* ---------------- uploads & notes */
+async function upload(blob, name) {
+  const lang = $("#lang").value;
+  try {
+    await api(`/api/upload?name=${encodeURIComponent(name)}&lang=${lang}`, { method: "POST", body: blob });
+    toast("Saving to your brain…"); pollJobs();
+  } catch (e) { toast(e.message); }
+}
+const drop = $("#drop"), fileInput = $("#fileInput");
+drop.onclick = () => fileInput.click();
+fileInput.onchange = () => { [...fileInput.files].forEach(f => upload(f, f.name)); fileInput.value = ""; };
+["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+drop.addEventListener("drop", e => [...e.dataTransfer.files].forEach(f => upload(f, f.name)));
+// allow dropping anywhere on the page
+document.addEventListener("dragover", e => e.preventDefault());
+document.addEventListener("drop", e => { if (!drop.contains(e.target)) { e.preventDefault(); [...e.dataTransfer.files].forEach(f => upload(f, f.name)); } });
+
+$("#saveNote").onclick = async () => {
+  const text = $("#note").value.trim();
+  if (!text) return;
+  try { await api("/api/note", { method: "POST", body: JSON.stringify({ text }) }); $("#note").value = ""; toast("Note saved"); pollJobs(); }
+  catch (e) { toast(e.message); }
+};
+
+/* ---------------- jobs */
+let jobPoll = null;
+async function pollJobs() {
+  const jobs = await api("/api/jobs").catch(() => []);
+  $("#jobs").innerHTML = jobs.length ? `<p class="eyebrow" style="margin:0">Processing</p>` + jobs.slice(0, 6).map(j => `
+    <div class="job">
+      <div class="top"><span>${esc(j.label)}</span><span class="pill ${j.status}">${j.status}</span></div>
+      <div class="log">${j.error ? esc(j.error)
+        : j.status === "done" ? `saved as <a data-doc="${j.doc_id}">#${j.doc_id}</a> · ${j.elapsed}s`
+        : esc(j.log[j.log.length - 1] || "waiting…")}</div>
+    </div>`).join("") : "";
+  const busy = jobs.some(j => j.status === "running" || j.status === "queued");
+  if (pollJobs._busy && !busy) { refreshStatus(); loadMemories(); }
+  pollJobs._busy = busy;
+  clearTimeout(jobPoll);
+  if (busy) jobPoll = setTimeout(pollJobs, 1000);
+}
+$("#jobs").addEventListener("click", e => { const a = e.target.closest("[data-doc]"); if (a) openDoc(+a.dataset.doc); });
+
+/* ---------------- ask */
+const convo = [];
+function render(md) {
+  const lines = esc(md).split("\n");
+  let html = "", inList = false;
+  for (const raw of lines) {
+    let l = raw.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\[#(\d+)\]/g, `<button class="cite" data-doc="$1">#$1</button>`);
+    if (/^\s*[-*•]\s+/.test(l)) { if (!inList) { html += "<ul>"; inList = true; } html += `<li>${l.replace(/^\s*[-*•]\s+/, "")}</li>`; continue; }
+    if (inList) { html += "</ul>"; inList = false; }
+    if (l.trim()) html += `<p>${l}</p>`;
+  }
+  return html + (inList ? "</ul>" : "");
+}
+function addMsg(cls, html) {
+  $("#empty")?.remove();
+  const el = document.createElement("div"); el.className = `msg ${cls}`; el.innerHTML = html;
+  $("#threadInner").appendChild(el);
+  $("#thread").scrollTop = 1e9;
+  return el;
+}
+let asking = false;
+async function ask(q) {
+  q = q.trim(); if (!q || asking) return;
+  asking = true; $("#send").disabled = true;
+  addMsg("q", esc(q));
+  const el = addMsg("a", `<span class="caret"></span>`);
+  let text = "", sources = [];
+  try {
+    const r = await fetch("/api/ask", { method: "POST", body: JSON.stringify({ question: q, history: convo }) });
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const msg = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1);
+        if (msg.t) { text += msg.t; el.innerHTML = render(text) + `<span class="caret"></span>`; $("#thread").scrollTop = 1e9; }
+        if (msg.sources) sources = msg.sources;
+        if (msg.error) throw new Error(msg.error);
+      }
+    }
+  } catch (e) { text += `\n\n_Error: ${e.message}_`; }
+  el.innerHTML = render(text) + `<div class="sources">${sources.length ? "from " + sources.map(s => `<button data-doc="${s.id}">#${s.id} ${esc(s.title)}</button>`).join("") : ""}
+    <button data-speak title="Read aloud">🔊 read aloud</button></div>`;
+  el.querySelector("[data-speak]").onclick = () => speak(text);
+  convo.push({ role: "user", content: q }, { role: "assistant", content: text });
+  asking = false; $("#send").disabled = false;
+}
+$("#thread").addEventListener("click", e => { const b = e.target.closest("[data-doc]"); if (b) openDoc(+b.dataset.doc); });
+const qEl = $("#question");
+qEl.addEventListener("input", () => { qEl.style.height = "auto"; qEl.style.height = qEl.scrollHeight + "px"; });
+qEl.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(qEl.value); qEl.value = ""; qEl.style.height = "auto"; } });
+$("#send").onclick = () => { ask(qEl.value); qEl.value = ""; };
+$("#suggest").addEventListener("click", e => { if (e.target.tagName === "BUTTON") ask(e.target.textContent); });
+
+// voice question: record -> local whisper -> ask
+let qSession = null;
+$("#askMic").onclick = async () => {
+  const b = $("#askMic");
+  if (!qSession) {
+    try { qSession = await startRecorder(); } catch { toast("Microphone blocked — allow it in the browser"); return; }
+    b.classList.add("live"); qEl.placeholder = "Listening… tap the mic again when done";
+  } else {
+    const { blob, ext } = await qSession.stop(); qSession = null;
+    b.classList.remove("live"); qEl.placeholder = "Transcribing locally…";
+    try {
+      const r = await api(`/api/transcribe?name=q.${ext}&lang=${$("#lang").value}`, { method: "POST", body: blob });
+      qEl.placeholder = "Ask your brain…";
+      if (r.text) ask(r.text); else toast("Didn't catch that — try again");
+    } catch (e) { qEl.placeholder = "Ask your brain…"; toast(e.message); }
+  }
+};
+
+// read aloud with on-device voices only (localService) so no text goes to a cloud TTS
+function speak(text) {
+  speechSynthesis.cancel();
+  const clean = text.replace(/\[#\d+\]/g, "").replace(/[*_#]/g, "");
+  const u = new SpeechSynthesisUtterance(clean);
+  const lang = /[ąćęłńóśźż]/i.test(clean) ? "pl" : "en";
+  const voice = speechSynthesis.getVoices().find(v => v.localService && v.lang.startsWith(lang));
+  if (!voice) return toast("No on-device voice installed for this language");
+  u.voice = voice; u.lang = voice.lang;
+  speechSynthesis.speak(u);
+}
+
+/* ---------------- memories */
+let docs = [];
+async function loadMemories() {
+  docs = await api("/api/docs").catch(() => []);
+  drawCards();
+}
+function drawCards() {
+  const f = $("#filter").value.toLowerCase();
+  const list = docs.filter(d => !f || `${d.title} ${d.summary}`.toLowerCase().includes(f));
+  $("#cards").innerHTML = list.length ? list.map(d => `
+    <button class="card" data-doc="${d.id}">
+      <div class="meta"><span>#${d.id}</span><span>${d.kind === "audio" ? "● audio " + fmtDur(d.duration) : d.kind}</span><span>${esc(d.created_at.slice(0, 10))}</span></div>
+      <h3>${esc(d.title || "Untitled")}</h3>
+      <p>${esc(d.summary || "")}</p>
+    </button>`).join("")
+    : `<div class="empty" style="grid-column:1/-1;margin-top:40px"><h2>Nothing here yet</h2>Record something or drop a file on the left.</div>`;
+}
+$("#filter").oninput = drawCards;
+$("#cards").addEventListener("click", e => { const c = e.target.closest("[data-doc]"); if (c) openDoc(+c.dataset.doc); });
+
+async function openDoc(id) {
+  let d;
+  try { d = await api(`/api/docs/${id}`); } catch { return toast("That memory no longer exists"); }
+  const k = d.knowledge || {};
+  const list = (title, items) => items && items.length ? `<h4>${title}</h4><ul>${items.map(i => `<li>${esc(i)}</li>`).join("")}</ul>` : "";
+  $("#dMeta").textContent = `#${d.id} · ${d.kind}${d.language ? " · " + d.language : ""}${d.duration ? " · " + fmtDur(d.duration) : ""} · ${d.created_at.replace("T", " ")}`;
+  $("#dTitle").textContent = d.title || "Untitled";
+  $("#dBody").innerHTML = `
+    ${k.summary ? `<p class="summary">${esc(k.summary)}</p>` : ""}
+    ${list("Key points", k.key_points)}${list("Decisions", k.decisions)}${list("Action items", k.action_items)}${list("Facts", k.facts)}
+    ${k.topics?.length || k.people?.length ? `<h4>Tags</h4><div class="tags">${[...(k.people || []), ...(k.topics || [])].map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
+    <h4>${d.kind === "audio" ? "Transcript" : "Content"}</h4><pre class="transcript">${esc(d.content)}</pre>
+    <div class="row" style="margin-top:22px"><button class="btn ghost danger" id="dDelete">Delete this memory</button></div>`;
+  $("#dDelete").onclick = async () => {
+    if ($("#dDelete").dataset.armed) {
+      await api(`/api/docs/${id}`, { method: "DELETE" }); closeDoc(); loadMemories(); refreshStatus(); toast("Deleted");
+    } else { $("#dDelete").dataset.armed = 1; $("#dDelete").textContent = "Click again to confirm"; }
+  };
+  $("#drawer").classList.add("open"); $("#scrim").classList.add("open");
+}
+function closeDoc() { $("#drawer").classList.remove("open"); $("#scrim").classList.remove("open"); }
+$("#dClose").onclick = closeDoc; $("#scrim").onclick = closeDoc;
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeDoc(); });
+
+/* ---------------- tabs */
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
+  document.querySelectorAll(".pane").forEach(p => p.classList.toggle("active", p.id === "pane-" + t.dataset.pane));
+  if (t.dataset.pane === "mem") loadMemories();
+});
+
+refreshStatus(); loadMemories(); pollJobs();
+setInterval(refreshStatus, 15000);
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+[project]
+name = "local-brain"
+version = "0.1.0"
+description = "A private, fully offline second brain: faster-whisper + local LLM (Ollama) + SQLite."
+requires-python = ">=3.10"
+dependencies = ["faster-whisper>=1.1", "numpy", "requests"]
+
+[project.scripts]
+brain = "brain.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["brain"]
+
+[tool.setuptools.package-data]
+brain = ["static/*"]
