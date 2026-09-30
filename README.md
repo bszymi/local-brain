@@ -23,15 +23,27 @@ text / notes ──────────────────────�
 - The LLM and the embeddings run in Ollama, which listens on `127.0.0.1:11434` only.
 - All data lives in `data/`: the SQLite DB, the transcripts and the Whisper weights.
 
-## Setup (once)
+## Quick start: one command
 
 ```bash
-python3.11 -m venv .venv && .venv/bin/pip install -e .
-OLLAMA_HOST=127.0.0.1 ollama serve        # or: brew services start ollama
-.venv/bin/brain setup                     # downloads the models: the only step that uses the internet
+git clone https://github.com/bszymi/local-brain && ./local-brain/start.sh
 ```
 
-Tip: `alias brain=~/dev/local-brain/.venv/bin/brain`
+On the first run, `start.sh`:
+1. installs Python 3.12 and Ollama with Homebrew, but only if they're missing (macOS)
+2. creates the Python environment in `.venv/`
+3. starts Ollama, listening on `127.0.0.1` only
+4. downloads the models, about 7.5 GB (the only step that uses the internet)
+5. opens the app at http://127.0.0.1:8777
+
+After that, `./start.sh` from the `local-brain` folder (or double-clicking **`Local Brain.command`** in Finder)
+starts it in a couple of seconds. **Ctrl-C** stops everything, including Ollama if the script started it.
+Extra arguments go to the web UI, e.g. `./start.sh --port 9000`.
+
+Requirements: macOS with [Homebrew](https://brew.sh) (Apple Silicon recommended), about 10 GB of free disk and 16 GB of RAM.
+On Linux, install Ollama first (`curl -fsSL https://ollama.com/install.sh | sh`) and Python 3.10–3.13; the rest works the same.
+
+To update later: `git pull && ./start.sh`. Dependencies are reinstalled automatically when they change.
 
 ## The interface
 
@@ -46,6 +58,8 @@ Double-click **`Local Brain.command`** in Finder, or run `brain ui`. It opens ht
 The first time you record, the browser will ask for microphone permission. Allow it.
 
 ## Command line
+
+The CLI lives at `.venv/bin/brain`. Tip: `alias brain=~/local-brain/.venv/bin/brain`. Ollama must be running (`./start.sh` takes care of that).
 
 ```bash
 brain add ~/Recordings/meeting.m4a        # transcribe + extract knowledge + index
